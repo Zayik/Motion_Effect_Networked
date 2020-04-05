@@ -88,7 +88,7 @@ class ServerClass:
         self.thread.start()
         self.threadId = self.thread.ident
         print('Creating thread with name %s, id %s' % (self.thread.getName(), self.thread.ident))
-            
+
     def serverThread(self, animations):
         self.serverSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         
@@ -112,6 +112,7 @@ class ServerClass:
             except:
                 print("Socket failed to receive. Socket could be closed or program is existing.")
                 self.run = False
+                break
             if(time.clock() - self.lastPingTime) >= self.closeIfNoPingInXSeconds:
                 print("Closing server due to ping not received.")
                 self.run = False
@@ -120,7 +121,9 @@ class ServerClass:
             self.socketClosed = True
             self.serverSocket.shutdown(socket.SHUT_RDWR)
             self.serverSocket.close()
+        #self.thread = None
         print("Server Thread Exiting.")
+        
         
     def forceCloseServerSocket(self):
         self.socketClosed = True
@@ -240,12 +243,12 @@ class SourceClass:
         self.forceY = 0
 
         distance = math.sqrt(math.pow(self.targetPos.x - self.pos.x, 2) + math.pow(self.targetPos.y - self.pos.y, 2))
-        print("Distance: ", distance, ", Duration: ", duration)
+        #print("Distance: ", distance, ", Duration: ", duration)
         if duration == 0:
             durationBasedSpeed = distance
         else:
             durationBasedSpeed = distance / duration
-        print("Duration based speed: ", durationBasedSpeed, ", movementType: ", movementType)
+        #print("Duration based speed: ", durationBasedSpeed, ", movementType: ", movementType)
         if movementType == MOVEMENT_DURATION:
             self.posSpeed = durationBasedSpeed
         if movementType == MOVEMENT_QUICKEST:
@@ -260,14 +263,14 @@ class SourceClass:
         self.forceW = 0
         self.forceH = 0
 
-        print("Scale: scale.x: ", self.scale.x, ", scale.y: ", self.scale.y, ", targetScale.x: ", self.targetScale.x, ", targetScale.y: ", self.targetScale.y)
+        #print("Scale: scale.x: ", self.scale.x, ", scale.y: ", self.scale.y, ", targetScale.x: ", self.targetScale.x, ", targetScale.y: ", self.targetScale.y)
         if duration == 0:
             self.forceW = self.targetScale.x - self.scale.x
             self.forceH = self.targetScale.y - self.scale.y
         else:
             self.forceW = (self.targetScale.x - self.scale.x) / duration
             self.forceH = (self.targetScale.y - self.scale.y) / duration
-            print("Forces: W: ", self.forceW, "  -  H: ", self.forceH)
+            #print("Forces: W: ", self.forceW, "  -  H: ", self.forceH)
 
         
        
@@ -338,7 +341,7 @@ def ProcessAnimation(animation):
         
 def InitializeSource(animation, positionSpecified, sizeSpecified):
     scene_item = findSceneItem(source_name)
-    print("scene_item: ", scene_item)
+    #print("scene_item: ", scene_item)
     if scene_item != None:
         posV = obs.vec2()
         scaleV = obs.vec2()
@@ -492,17 +495,20 @@ def findCurrentSceneName():
     try:
         sceneSource = obs.obs_frontend_get_current_scene()
     except Exception as e: 
-        print(e)
+        print("Handling exception: %s" % (e))
     return obs.obs_source_get_name(sceneSource)
 
 def findSceneItem(source_name):
-    src = obs.obs_get_source_by_name(findCurrentSceneName())
-    if src:
-        scene = obs.obs_scene_from_source(src)
-        obs.obs_source_release(src)
-        if scene:
-            sceneItem = obs.obs_scene_find_source(scene, source_name)
-            return sceneItem
+    currentScene = findCurrentSceneName()
+    # print("Current Scene: %s" % (currentScene))
+    if currentScene:
+        src = obs.obs_get_source_by_name(currentScene)
+        if src:
+            scene = obs.obs_scene_from_source(src)
+            obs.obs_source_release(src)
+            if scene:
+                sceneItem = obs.obs_scene_find_source(scene, source_name)
+                return sceneItem
 
 
 def calculateSize(scene_item, scaleX, scaleY):
@@ -517,8 +523,8 @@ def calculateNewScale(item, width, height):
 
     baseWidth = obs.obs_source_get_base_width(src)
     baseHeight = obs.obs_source_get_base_height(src)
-    print("width: ", width, ", height: ", height)
-    print("baseWidth: ", baseWidth, ", baseHeight: ", baseHeight)
+    #print("width: ", width, ", height: ", height)
+    #print("baseWidth: ", baseWidth, ", baseHeight: ", baseHeight)
     return (width / baseWidth), ( height / baseHeight)
 
 def script_properties():
@@ -553,17 +559,21 @@ def script_properties():
     obs.obs_properties_add_int(props, Server.portStorage,"Port",0, 99999, 1)
     ######################################################################
 
-    obs.obs_properties_add_int(props,
+    animationCountProperty = obs.obs_properties_add_int(props,
                                "animationCount",
                                "Animations (Reload scripts to take effect)",
                                1,
                                25,
                                1)
-    obs.obs_property_set_modified_callback("animationCount", properties_set_vis)
+    #print("Animation Count Callback Start")
+    obs.obs_property_set_modified_callback(animationCountProperty, properties_set_vis)
+    #print("Animation Count Callback End")
 
     customStartingProperties = []
     variationProperties = []
     setDestinationValuesButtons = []
+
+    #print("Showing %s animations" % (animationCount))
     # For each command, do the following: 
     for i in range(animationCount):
         index = i
@@ -582,7 +592,7 @@ def script_properties():
         
         obs.obs_property_set_modified_callback(customStartingProperties[index], properties_set_vis)
         obs.obs_property_set_modified_callback(variationProperties[index], properties_set_vis)
-        obs.obs_property_set_modified_callback(customStartingProperties[index], properties_set_vis)
+        # obs.obs_property_set_modified_callback(customStartingProperties[index], properties_set_vis)
 
         setDestinationValuesButtons.append(obs.obs_properties_add_button(props, Animations[i].setDestinationStorage, "Populate Destination Position And Size (Reload Script To See Change)", SetDestinationPositionAndSize))        
 
@@ -626,14 +636,28 @@ def script_properties():
     return props
 
 def properties_set_vis(props, p, settings):
+    global animationCount
     name = obs.obs_property_name(p)
-    indexStr = re.sub("[^0-9]", "", name)
-    
-    animationIndex = int(indexStr)
+    # print("New Animation Count: %s" % (animationCount))
+    print("Name: %s" % (name))
 
-    showStartingProperties = obs.obs_data_get_bool(settings, Animations[animationIndex].customStartingSettingStorage)
-    variationType = obs.obs_data_get_int(settings, Animations[animationIndex].variationTypeStorage)
-    animationProperties_set_vis(props, Animations[animationIndex], variationType, showStartingProperties)
+    # Determine if we now have more animations
+    #print("Comparing '%s' to 'animationcount'" % (str(name).strip().lower()))
+    #if str(name).strip().lower() == "animationcount":
+        #print("Restoring animations")
+        #restoreAnimations(settings)
+    #else:
+    if str(name).strip().lower() != "animationcount":
+        indexStr = re.sub("[^0-9]", "", name)
+        if indexStr == "":
+            return False
+        animationIndex = int(indexStr)
+        showStartingProperties = obs.obs_data_get_bool(settings, Animations[animationIndex].customStartingSettingStorage)
+        variationType = obs.obs_data_get_int(settings, Animations[animationIndex].variationTypeStorage)
+        animationProperties_set_vis(props, Animations[animationIndex], variationType, showStartingProperties)
+
+    #script_properties()
+
     return True
 
 def animationProperties_set_vis(props, animation, variationType, showStartingProperties):
@@ -717,6 +741,38 @@ def ping_Server():
     print("Ping Server")
     Server.lastPingTime = time.clock()
 
+def restoreAnimations(settings):
+    #print("Restoring Animation with new animation count of %s" % (animationCount))
+    Animations.clear()
+    for i in range(animationCount):
+        # Create animations based on stored stuff.
+        animation = Animation(i)
+        
+        animation.variationType = obs.obs_data_get_int(settings, animation.variationTypeStorage)
+        animation.customStartingSetting = obs.obs_data_get_bool(settings, animation.customStartingSettingStorage)
+
+        # Get Starting Position and Scale
+        animation.startingX = obs.obs_data_get_int(settings, animation.startingXStorage)
+        animation.startingY = obs.obs_data_get_int(settings, animation.startingYStorage)
+        animation.startingWidth = obs.obs_data_get_int(settings, animation.startingWidthStorage)
+        animation.startingHeight = obs.obs_data_get_int(settings, animation.startingHeightStorage)
+        
+        animation.movementType = obs.obs_data_get_int(settings, animation.movementTypeStorage)
+        animation.duration = obs.obs_data_get_int(settings, animation.durationStorage)
+        animation.posSpeed = obs.obs_data_get_int(settings, animation.posSpeedStorage)
+
+        # Get Destination Position and Scale
+        animation.destinationX = obs.obs_data_get_int(settings, animation.destinationXStorage)
+        animation.destinationY = obs.obs_data_get_int(settings, animation.destinationYStorage)
+        animation.destinationWidth = obs.obs_data_get_int(settings, animation.destinationWidthStorage)
+        animation.destinationHeight = obs.obs_data_get_int(settings, animation.destinationHeightStorage)
+
+        animation.posDirection = obs.obs_data_get_int(settings, animation.posDirectionStorage)
+        animation.changeSizeInPlace = obs.obs_data_get_bool(settings, animation.changeSizeInPlaceStorage)
+        animation.command = obs.obs_data_get_string(settings, animation.commandStorage)
+        animation.stopCommand = obs.obs_data_get_string(settings, animation.stopCommandStorage)
+        Animations.append(animation)
+
 def script_update(updatedSettings):
     """
     Called when the script’s settings (if any) have been changed by the user.
@@ -733,40 +789,12 @@ def script_update(updatedSettings):
     try:
         settings = updatedSettings
 
-        Animations.clear()
         source_name = obs.obs_data_get_string(settings, "source")
         animationCount = obs.obs_data_get_int(settings, "animationCount")
         Server.address = obs.obs_data_get_string(settings, Server.addressStorage)
         Server.port = obs.obs_data_get_int(settings, Server.portStorage)
 
-        for i in range(animationCount):
-            # Create animations based on stored stuff.
-            animation = Animation(i)
-            
-            animation.variationType = obs.obs_data_get_int(settings, animation.variationTypeStorage)
-            animation.customStartingSetting = obs.obs_data_get_bool(settings, animation.customStartingSettingStorage)
-
-            # Get Starting Position and Scale
-            animation.startingX = obs.obs_data_get_int(settings, animation.startingXStorage)
-            animation.startingY = obs.obs_data_get_int(settings, animation.startingYStorage)
-            animation.startingWidth = obs.obs_data_get_int(settings, animation.startingWidthStorage)
-            animation.startingHeight = obs.obs_data_get_int(settings, animation.startingHeightStorage)
-            
-            animation.movementType = obs.obs_data_get_int(settings, animation.movementTypeStorage)
-            animation.duration = obs.obs_data_get_int(settings, animation.durationStorage)
-            animation.posSpeed = obs.obs_data_get_int(settings, animation.posSpeedStorage)
-
-            # Get Destination Position and Scale
-            animation.destinationX = obs.obs_data_get_int(settings, animation.destinationXStorage)
-            animation.destinationY = obs.obs_data_get_int(settings, animation.destinationYStorage)
-            animation.destinationWidth = obs.obs_data_get_int(settings, animation.destinationWidthStorage)
-            animation.destinationHeight = obs.obs_data_get_int(settings, animation.destinationHeightStorage)
-
-            animation.posDirection = obs.obs_data_get_int(settings, animation.posDirectionStorage)
-            animation.changeSizeInPlace = obs.obs_data_get_bool(settings, animation.changeSizeInPlaceStorage)
-            animation.command = obs.obs_data_get_string(settings, animation.commandStorage)
-            animation.stopCommand = obs.obs_data_get_string(settings, animation.stopCommandStorage)
-            Animations.append(animation)
+        restoreAnimations(settings)
 
         #only remove/add events if our server thread is failing. 
         serverThreadFound = False
@@ -776,12 +804,11 @@ def script_update(updatedSettings):
                 print('Main/Dummy Thread with name %s, id %s' % (t.getName(), t.ident))
                 continue
             print('Thread with name %s, id %s' % (t.getName(), t.ident))
-            Server.threadId = t.ident
-            serverThreadFound = True
+            if t != None:
+                Server.threadId = t.ident
+                serverThreadFound = True
             break
 
-        #if not serverThreadFound:
-        # By default the server will close itself within 5 seconds of this flag being set.
         Server.run = False
         obs.timer_remove(adjustCameraTick)
         obs.timer_remove(DelayedTimerAddition)
@@ -793,18 +820,18 @@ def script_update(updatedSettings):
         obs.timer_add(adjustCameraTick, UpdateRateMs)
         
         obs.timer_remove(ping_Server)
-        # # Time is in ms.
+        # Time is in ms.
         obs.timer_add(ping_Server, (Server.closeIfNoPingInXSeconds-1)*1000)
 
         obs.obs_frontend_remove_event_callback(shutdownServer)
         obs.obs_frontend_add_event_callback(shutdownServer)
 
     except Exception as e: 
-        print(e)
+        print("Exception from script_update: %s" % (e))
 
 def shutdownServer(data):
     print("Shutdown")
-    print("Data: %s" % (data))
+    #print("Data: %s" % (data))
     if data == 17:
         Server.run = False
         Server.forceCloseServerSocket()
@@ -819,8 +846,10 @@ def shutdownServer(data):
                 print('Main/Dummy Thread with name %s, id %s' % (t.getName(), t.ident))
                 continue
             print('Thread with name %s, id %s' % (t.getName(), t.ident))
-            #t.join()
-
+            t.stop()
+            t.join()
+        print("Finished joining thread.")
+        Server.thread = None
 
 def DelayedTimerAddition():
     obs.timer_remove(adjustCameraTick)
