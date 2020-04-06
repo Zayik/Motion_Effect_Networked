@@ -33,7 +33,7 @@ import logging
 source_name = ""
 visible = True
 animationCount = 0
-source_item = None
+scene_item = None
 settings = []
 props = obs.obs_properties_create()
 
@@ -51,11 +51,8 @@ MOVEMENT_QUICKEST = MOVEMENT_SPEED | MOVEMENT_DURATION
 DefaultUpdatePerSecond = 60
 UpdatesPerSecond = 60
 TickFactor = DefaultUpdatePerSecond / UpdatesPerSecond
-
 UpdateRateMs = int(1000/UpdatesPerSecond)
-
 Animations = [] # type: List[Animation] 
-
 source_pos = obs.vec2()
 
 class ServerClass:
@@ -90,6 +87,7 @@ class ServerClass:
         print('Creating thread with name %s, id %s' % (self.thread.getName(), self.thread.ident))
 
     def serverThread(self, animations):
+        
         self.serverSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         
         # Attempt to bind the socket to an address and port.
@@ -99,9 +97,11 @@ class ServerClass:
             # If we come across an error, shut down the server thread so another one can be made.
             self.run = False
         print("Starting the Server")
-        self.serverSocket.settimeout(5)
+        self.serverSocket.settimeout(2)
         while self.run:
             try:
+                data = None
+                addr = None
                 data, addr = self.serverSocket.recvfrom(1024)
                 decodedData = "".join(map(chr, data))
                 print("Message: ", decodedData)
@@ -121,7 +121,7 @@ class ServerClass:
             self.socketClosed = True
             self.serverSocket.shutdown(socket.SHUT_RDWR)
             self.serverSocket.close()
-        #self.thread = None
+            self.serverSocket = None
         print("Server Thread Exiting.")
         
         
@@ -243,12 +243,10 @@ class SourceClass:
         self.forceY = 0
 
         distance = math.sqrt(math.pow(self.targetPos.x - self.pos.x, 2) + math.pow(self.targetPos.y - self.pos.y, 2))
-        #print("Distance: ", distance, ", Duration: ", duration)
         if duration == 0:
             durationBasedSpeed = distance
         else:
             durationBasedSpeed = distance / duration
-        #print("Duration based speed: ", durationBasedSpeed, ", movementType: ", movementType)
         if movementType == MOVEMENT_DURATION:
             self.posSpeed = durationBasedSpeed
         if movementType == MOVEMENT_QUICKEST:
@@ -263,14 +261,12 @@ class SourceClass:
         self.forceW = 0
         self.forceH = 0
 
-        #print("Scale: scale.x: ", self.scale.x, ", scale.y: ", self.scale.y, ", targetScale.x: ", self.targetScale.x, ", targetScale.y: ", self.targetScale.y)
         if duration == 0:
             self.forceW = self.targetScale.x - self.scale.x
             self.forceH = self.targetScale.y - self.scale.y
         else:
             self.forceW = (self.targetScale.x - self.scale.x) / duration
             self.forceH = (self.targetScale.y - self.scale.y) / duration
-            #print("Forces: W: ", self.forceW, "  -  H: ", self.forceH)
 
         
        
@@ -281,42 +277,39 @@ Server = ServerClass()
 Source = SourceClass()
 
 def ProcessCommand(command, animations):
-    # Find the animation with the corresponding command then do stuff based on it.
-    global Animations
     for i in range(animationCount):
-        #print("Command: ", command, "  -  Variation Type: ", Animations[i].variationType)
-        if Animations[i].command == command:
+        if animations[i].command == command:
             Source.processingAnimation = True
-            ProcessAnimation(Animations[i])
+            ProcessAnimation(animations[i])
             print("Command ", command, " available and now executing!")
-        elif ((Animations[i].variationType == VARIATION_POSITION_FREE or Animations[i].variationType == VARIATION_SIZE_FREE) and Animations[i].stopCommand == command):
+        elif ((animations[i].variationType == VARIATION_POSITION_FREE or animations[i].variationType == VARIATION_SIZE_FREE) and animations[i].stopCommand == command):
             print("Stop Command ", command, " available and now executing!")
             Source.targetPos = Source.pos
             Source.processingAnimation = False
-        elif Animations[i].variationType == VARIATION_POSITION_FREE_ALL:
-            commandSuffix = Animations[i].command
-            stopCommandSuffix = Animations[i].stopCommand
+        elif animations[i].variationType == VARIATION_POSITION_FREE_ALL:
+            commandSuffix = animations[i].command
+            stopCommandSuffix = animations[i].stopCommand
             if command.endswith(commandSuffix):
                 direction = command[:-len(commandSuffix)]
                 if direction == "Up":
-                    Animations[i].posDirection = Direction.UP_INDEX
+                    animations[i].posDirection = Direction.UP_INDEX
                 elif direction == "Down":
-                    Animations[i].posDirection = Direction.DOWN_INDEX
+                    animations[i].posDirection = Direction.DOWN_INDEX
                 elif direction == "Left":
-                    Animations[i].posDirection = Direction.LEFT_INDEX
+                    animations[i].posDirection = Direction.LEFT_INDEX
                 elif direction == "Right":
-                    Animations[i].posDirection = Direction.RIGHT_INDEX
+                    animations[i].posDirection = Direction.RIGHT_INDEX
 
                 elif direction == "UpLeft" or direction == "Up_Left":
-                    Animations[i].posDirection = Direction.UP_LEFT_INDEX
+                    animations[i].posDirection = Direction.UP_LEFT_INDEX
                 elif direction == "UpRight" or direction == "Up_Right":
-                    Animations[i].posDirection = Direction.UP_RIGHT_INDEX
+                    animations[i].posDirection = Direction.UP_RIGHT_INDEX
                 elif direction == "DownLeft" or direction == "Down_Left":
-                    Animations[i].posDirection = Direction.DOWN_LEFT_INDEX
+                    animations[i].posDirection = Direction.DOWN_LEFT_INDEX
                 elif direction == "DownRight" or direction == "Down_Right":
-                    Animations[i].posDirection = Direction.DOWN_RIGHT_INDEX
+                    animations[i].posDirection = Direction.DOWN_RIGHT_INDEX
                 Source.processingAnimation = True
-                ProcessAnimation(Animations[i])
+                ProcessAnimation(animations[i])
             elif command.endswith(stopCommandSuffix):
                 Source.targetPos = Source.pos
                 Source.processingAnimation = False
@@ -340,8 +333,11 @@ def ProcessAnimation(animation):
         Source.GetXAndYScaleForce(animation.duration)
         
 def InitializeSource(animation, positionSpecified, sizeSpecified):
-    scene_item = findSceneItem(source_name)
-    #print("scene_item: ", scene_item)
+    #scene_item = None
+    global source_name
+    scene_item = getSceneItem()
+    #scene_item = findSceneItem(source_name)
+    print("InitializeSource::scene_item: %s" % (scene_item))
     if scene_item != None:
         posV = obs.vec2()
         scaleV = obs.vec2()
@@ -375,9 +371,6 @@ def InitializeSource(animation, positionSpecified, sizeSpecified):
             Source.targetScale.x = Source.scale.x
             Source.targetScale.y = Source.scale.y
         
-
-        
-    
 def ProcessPositionFreeAnimation(animation):
     InitializeSource(animation, True, False)
 
@@ -409,7 +402,6 @@ def ProcessPositionFreeAnimation(animation):
         Source.targetPos.y = Source.pos.y - 5000
 
 def SetDestinationPositionAndSize(props, p):
-    global source_name
     global Animations
 
     # Base the index off of the name since callbacks don't work well.
@@ -417,14 +409,14 @@ def SetDestinationPositionAndSize(props, p):
     indexStr = re.sub("[^0-9]", "", name)
     
     animationIndex = int(indexStr)
-    sceneItem = findSceneItem(source_name)
-    
+    scene_item = getSceneItem()
+
     posV = obs.vec2()
     scaleV = obs.vec2()
-    obs.obs_sceneitem_get_pos(sceneItem, posV)
-    obs.obs_sceneitem_get_scale(sceneItem, scaleV) 
+    obs.obs_sceneitem_get_pos(scene_item, posV)
+    obs.obs_sceneitem_get_scale(scene_item, scaleV) 
 
-    width, height = calculateSize(sceneItem, scaleV.x, scaleV.y)
+    width, height = calculateSize(scene_item, scaleV.x, scaleV.y)
     Animations[animationIndex].destinationX = posV.x
     Animations[animationIndex].destinationY = posV.y
     Animations[animationIndex].destinationWidth = width
@@ -435,61 +427,73 @@ def SetDestinationPositionAndSize(props, p):
     obs.obs_data_set_int(settings, Animations[animationIndex].destinationHeightStorage, (int)(Animations[animationIndex].destinationHeight))
 
 def adjustCameraTick():
-    global source_item
     global source_name
     global source_pos
-    global UpdateRateMs
+    global UpdatesPerSecond
+    global scene_item
 
-    scene_item = findSceneItem(source_name)
-    if scene_item != None:
-        posV = obs.vec2()
-        scaleV = obs.vec2()
+    # Do not control any aspect of the source if no animation is currently playing or if the server is not connected. 
+    if (not Source.processingAnimation) or (not Server.run) or scene_item is None:
+        return
 
-        obs.obs_sceneitem_get_pos(scene_item, posV)
-        obs.obs_sceneitem_get_scale(scene_item, scaleV) 
-        width, height = calculateSize(scene_item, Source.scale.x, Source.scale.y)
-        Source.pos = posV
-        Source.size.x = width
-        Source.size.y = height
+    #scene_item = findSceneItem(source_name)
+    # Only make adjustments if our server is currently running.
+    #print("adjustCameraTick::scene_item: %s" % (scene_item))
+    
+    posV = obs.vec2()
+    scaleV = obs.vec2()
 
-        # Do not control any aspect of the source if no animation is currently playing. 
-        if not Source.processingAnimation:
-            return
+    obs.obs_sceneitem_get_pos(scene_item, posV)
+    obs.obs_sceneitem_get_scale(scene_item, scaleV) 
+    width, height = calculateSize(scene_item, Source.scale.x, Source.scale.y)
+    Source.pos = posV
+    Source.size.x = width
+    Source.size.y = height 
 
-        if Source.pos.x != Source.targetPos.x:
-            fractionX = (float(Source.forceX) / float(UpdatesPerSecond)) + Source.posRemainder.x
-            integerX = int(math.floor(fractionX))
-            Source.posRemainder.x = fractionX - integerX
-            Source.pos.x += integerX
-            if (integerX > 0 and Source.pos.x > Source.targetPos.x) or (integerX < 0 and Source.pos.x < Source.targetPos.x):
-                Source.pos.x = Source.targetPos.x
+    if Source.pos.x != Source.targetPos.x:
+        fractionX = (float(Source.forceX) / float(UpdatesPerSecond)) + Source.posRemainder.x
+        integerX = int(math.floor(fractionX))
+        Source.posRemainder.x = fractionX - integerX
+        Source.pos.x += integerX
+        if (integerX > 0 and Source.pos.x > Source.targetPos.x) or (integerX < 0 and Source.pos.x < Source.targetPos.x):
+            Source.pos.x = Source.targetPos.x
 
-        if Source.pos.y != Source.targetPos.y:
-            fractionY = (Source.forceY / UpdatesPerSecond) + Source.posRemainder.y
-            integerY = int(math.floor(fractionY))
-            Source.posRemainder.y = fractionY - integerY
-            Source.pos.y += integerY
-            if (integerY > 0 and Source.pos.y > Source.targetPos.y) or (integerY < 0 and Source.pos.y < Source.targetPos.y):
-                Source.pos.y = Source.targetPos.y
+    if Source.pos.y != Source.targetPos.y:
+        fractionY = (Source.forceY / UpdatesPerSecond) + Source.posRemainder.y
+        integerY = int(math.floor(fractionY))
+        Source.posRemainder.y = fractionY - integerY
+        Source.pos.y += integerY
+        if (integerY > 0 and Source.pos.y > Source.targetPos.y) or (integerY < 0 and Source.pos.y < Source.targetPos.y):
+            Source.pos.y = Source.targetPos.y
 
-        if Source.scale.x != Source.targetScale.x:
-            fractionX = (float(Source.forceW) / float(UpdatesPerSecond))
-            Source.scale.x += fractionX
-            if (fractionX > 0 and Source.scale.x > Source.targetScale.x) or (fractionX < 0 and Source.scale.x < Source.targetScale.x):
-                Source.scale.x = Source.targetScale.x
+    if Source.scale.x != Source.targetScale.x:
+        fractionX = (float(Source.forceW) / float(UpdatesPerSecond))
+        Source.scale.x += fractionX
+        if (fractionX > 0 and Source.scale.x > Source.targetScale.x) or (fractionX < 0 and Source.scale.x < Source.targetScale.x):
+            Source.scale.x = Source.targetScale.x
 
-        if Source.scale.y != Source.targetScale.y:
-            fractionY = (float(Source.forceH) / float(UpdatesPerSecond))
-            Source.scale.y += fractionY
-            if (fractionY > 0 and Source.scale.y > Source.targetScale.y) or (fractionY < 0 and Source.scale.y < Source.targetScale.y):
-                Source.scale.y = Source.targetScale.y
+    if Source.scale.y != Source.targetScale.y:
+        fractionY = (float(Source.forceH) / float(UpdatesPerSecond))
+        Source.scale.y += fractionY
+        if (fractionY > 0 and Source.scale.y > Source.targetScale.y) or (fractionY < 0 and Source.scale.y < Source.targetScale.y):
+            Source.scale.y = Source.targetScale.y
 
-        if Source.pos.x == Source.targetPos.x and Source.pos.y == Source.targetPos.y and Source.scale.x == Source.targetScale.x and Source.scale.y == Source.targetScale.y:
-            Source.processingAnimation = False
+    if Source.pos.x == Source.targetPos.x and Source.pos.y == Source.targetPos.y and Source.scale.x == Source.targetScale.x and Source.scale.y == Source.targetScale.y:
+        Source.processingAnimation = False
 
-        # Update the position and size of the source based on speed/
-        obs.obs_sceneitem_set_pos(scene_item, Source.pos)
-        obs.obs_sceneitem_set_scale(scene_item, Source.scale)
+    # Update the position and size of the source based on speed/
+    obs.obs_sceneitem_set_pos(scene_item, Source.pos)
+    obs.obs_sceneitem_set_scale(scene_item, Source.scale)
+
+def getSceneItem():
+    global scene_item
+    global source_name
+    print("Current Scene Item: %s, source name: %s" % (scene_item, source_name))
+    if scene_item is None:
+       print("Before finding scene item")
+       scene_item = findSceneItem(source_name)
+       print("Current Scene Item: %s, source name: %s" % (scene_item, source_name))
+    return scene_item
 
 def findCurrentSceneName():
     try:
@@ -499,16 +503,17 @@ def findCurrentSceneName():
     return obs.obs_source_get_name(sceneSource)
 
 def findSceneItem(source_name):
-    currentScene = findCurrentSceneName()
-    # print("Current Scene: %s" % (currentScene))
-    if currentScene:
-        src = obs.obs_get_source_by_name(currentScene)
+    scene_item = None
+    currentSceneName = findCurrentSceneName()
+    if currentSceneName:
+        src = obs.obs_get_source_by_name(currentSceneName)
         if src:
             scene = obs.obs_scene_from_source(src)
-            obs.obs_source_release(src)
-            if scene:
-                sceneItem = obs.obs_scene_find_source(scene, source_name)
-                return sceneItem
+            if scene:   
+                scene_item = obs.obs_scene_find_source(scene, source_name) 
+        obs.obs_scene_release(scene)
+        obs.obs_source_release(src)
+        return scene_item
 
 
 def calculateSize(scene_item, scaleX, scaleY):
@@ -523,8 +528,6 @@ def calculateNewScale(item, width, height):
 
     baseWidth = obs.obs_source_get_base_width(src)
     baseHeight = obs.obs_source_get_base_height(src)
-    #print("width: ", width, ", height: ", height)
-    #print("baseWidth: ", baseWidth, ", baseHeight: ", baseHeight)
     return (width / baseWidth), ( height / baseHeight)
 
 def script_properties():
@@ -559,21 +562,21 @@ def script_properties():
     obs.obs_properties_add_int(props, Server.portStorage,"Port",0, 99999, 1)
     ######################################################################
 
+    animationCountProperties = []
     animationCountProperty = obs.obs_properties_add_int(props,
                                "animationCount",
                                "Animations (Reload scripts to take effect)",
-                               1,
+                               0,
                                25,
                                1)
-    #print("Animation Count Callback Start")
-    obs.obs_property_set_modified_callback(animationCountProperty, properties_set_vis)
-    #print("Animation Count Callback End")
+    animationCountProperties.append(animationCountProperty)
+    obs.obs_property_set_modified_callback(animationCountProperties[0], properties_set_vis)
 
     customStartingProperties = []
     variationProperties = []
     setDestinationValuesButtons = []
+    movementProperties = []
 
-    #print("Showing %s animations" % (animationCount))
     # For each command, do the following: 
     for i in range(animationCount):
         index = i
@@ -600,7 +603,6 @@ def script_properties():
         obs.obs_properties_add_int(props, Animations[i].startingYStorage,"Starting Y",-8192, 8192, 1)
         obs.obs_properties_add_int(props, Animations[i].destinationXStorage,"Destination X",-8192, 8192, 1)
         obs.obs_properties_add_int(props, Animations[i].destinationYStorage,"Destination Y",-8192, 8192, 1)
-        
 
         # Handle movement type:
         movement_property_list = obs.obs_properties_add_list(props, Animations[i].movementTypeStorage, Movement.Type, obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_INT)
@@ -610,6 +612,11 @@ def script_properties():
 
         obs.obs_properties_add_int(props, Animations[i].durationStorage,"Duration (seconds)",0, 8192, 1)
         obs.obs_properties_add_int(props, Animations[i].posSpeedStorage,"Position Speed (Pixels per second)",1, 8192, 1)
+
+        movementProperties.append(movement_property_list)
+
+        obs.obs_property_set_modified_callback(movementProperties[index], properties_set_vis)
+
 
         # Handle pos speed direction
         direction_list = obs.obs_properties_add_list(props, Animations[i].posDirectionStorage, Direction.Type, obs.OBS_COMBO_TYPE_LIST, obs.OBS_COMBO_FORMAT_INT)
@@ -632,21 +639,13 @@ def script_properties():
 
         obs.obs_properties_add_text(props, Animations[i].commandStorage, "Command", obs.OBS_TEXT_DEFAULT)
         obs.obs_properties_add_text(props, Animations[i].stopCommandStorage, "Stop Command", obs.OBS_TEXT_DEFAULT)
-        animationProperties_set_vis(props, Animations[i], Animations[i].variationType, Animations[i].customStartingSetting)
+        animationProperties_set_vis(props, Animations[i], Animations[i].variationType, Animations[i].movementType, Animations[i].customStartingSetting)
     return props
 
 def properties_set_vis(props, p, settings):
     global animationCount
     name = obs.obs_property_name(p)
-    # print("New Animation Count: %s" % (animationCount))
-    print("Name: %s" % (name))
 
-    # Determine if we now have more animations
-    #print("Comparing '%s' to 'animationcount'" % (str(name).strip().lower()))
-    #if str(name).strip().lower() == "animationcount":
-        #print("Restoring animations")
-        #restoreAnimations(settings)
-    #else:
     if str(name).strip().lower() != "animationcount":
         indexStr = re.sub("[^0-9]", "", name)
         if indexStr == "":
@@ -654,14 +653,15 @@ def properties_set_vis(props, p, settings):
         animationIndex = int(indexStr)
         showStartingProperties = obs.obs_data_get_bool(settings, Animations[animationIndex].customStartingSettingStorage)
         variationType = obs.obs_data_get_int(settings, Animations[animationIndex].variationTypeStorage)
-        animationProperties_set_vis(props, Animations[animationIndex], variationType, showStartingProperties)
-
-    #script_properties()
+        movementType = obs.obs_data_get_int(settings, Animations[animationIndex].movementTypeStorage)
+        animationProperties_set_vis(props, Animations[animationIndex], variationType, movementType, showStartingProperties)
 
     return True
 
-def animationProperties_set_vis(props, animation, variationType, showStartingProperties):
+def animationProperties_set_vis(props, animation, variationType, movementType, showStartingProperties):
     global settings
+    # variationType = animation.variationType
+    # movementType = animation.movementType
 
     setDestinationProperty = obs.obs_properties_get(props, animation.setDestinationStorage)
     customStartingSettingsProperty = obs.obs_properties_get(props, animation.customStartingSettingStorage)
@@ -677,6 +677,7 @@ def animationProperties_set_vis(props, animation, variationType, showStartingPro
     movementTypeProperty = obs.obs_properties_get(props, animation.movementTypeStorage)
 
     changeSizeInPlaceProperty = obs.obs_properties_get(props, animation.changeSizeInPlaceStorage)
+    durationProperty = obs.obs_properties_get(props, animation.durationStorage)
 
     if variationType == VARIATION_POSITION or variationType == VARIATION_BOTH: 
         obs.obs_property_set_visible(startingXProperty, showStartingProperties)
@@ -690,6 +691,17 @@ def animationProperties_set_vis(props, animation, variationType, showStartingPro
         obs.obs_property_set_visible(destinationXProperty, False)
         obs.obs_property_set_visible(destinationYProperty, False)
         obs.obs_property_set_visible(posSpeedProperty, False)
+
+    if variationType == VARIATION_POSITION:
+        if movementType == MOVEMENT_DURATION:
+            obs.obs_property_set_visible(posSpeedProperty, False)
+            obs.obs_property_set_visible(durationProperty, True)
+        elif movementType == MOVEMENT_SPEED:
+            obs.obs_property_set_visible(posSpeedProperty, True)
+            obs.obs_property_set_visible(durationProperty, False)
+        else:
+            obs.obs_property_set_visible(posSpeedProperty, True)
+            obs.obs_property_set_visible(durationProperty, True)
 
     startingWidthProperty = obs.obs_properties_get(props, animation.startingWidthStorage)
     startingHeightProperty = obs.obs_properties_get(props, animation.startingHeightStorage)
@@ -722,16 +734,20 @@ def animationProperties_set_vis(props, animation, variationType, showStartingPro
     if variationType == VARIATION_POSITION_FREE:
         obs.obs_property_set_visible(posSpeedProperty, True)
         obs.obs_property_set_visible(posDirectionProperty, True)
+        obs.obs_property_set_visible(durationProperty, False)
     else:
         obs.obs_property_set_visible(posDirectionProperty, False)
 
     if variationType == VARIATION_POSITION_FREE_ALL:
         obs.obs_property_set_visible(posSpeedProperty, True)
+        obs.obs_property_set_visible(durationProperty, False)
     
     if variationType == VARIATION_SIZE:
         obs.obs_property_set_visible(changeSizeInPlaceProperty, True)
     else:
         obs.obs_property_set_visible(changeSizeInPlaceProperty, False)
+
+    
 
 def check_Server():
     print("Check Server")
@@ -778,6 +794,7 @@ def script_update(updatedSettings):
     Called when the script’s settings (if any) have been changed by the user.
     """
     global source_name
+    global scene_item
     global animationCount
     global Server
     global Animations
@@ -797,48 +814,50 @@ def script_update(updatedSettings):
         restoreAnimations(settings)
 
         #only remove/add events if our server thread is failing. 
-        serverThreadFound = False
-        main_thread = threading.current_thread()
-        for t in threading.enumerate():
-            if t is main_thread or t.getName().startswith('Dummy'):
-                print('Main/Dummy Thread with name %s, id %s' % (t.getName(), t.ident))
-                continue
-            print('Thread with name %s, id %s' % (t.getName(), t.ident))
-            if t != None:
-                Server.threadId = t.ident
-                serverThreadFound = True
-            break
+        #serverThreadFound = False
+        #main_thread = threading.current_thread()
+        # for t in threading.enumerate():
+        #     if t is main_thread or t.getName().startswith('Dummy'):
+        #         print('Main/Dummy Thread with name %s, id %s' % (t.getName(), t.ident))
+        #         continue
+        #     print('Thread with name %s, id %s' % (t.getName(), t.ident))
+        #     if t != None:
+        #         Server.threadId = t.ident
+        #         serverThreadFound = True
+        #     break
 
         Server.run = False
-        obs.timer_remove(adjustCameraTick)
-        obs.timer_remove(DelayedTimerAddition)
-        obs.timer_add(DelayedTimerAddition, 8000)
-        
-        obs.timer_remove(check_Server)
-        obs.timer_add(check_Server, 10000)
+        #Server.checkServer()
+
+        Source.processingAnimation = False
         obs.timer_remove(adjustCameraTick)
         obs.timer_add(adjustCameraTick, UpdateRateMs)
+
+        obs.timer_remove(check_Server)
+        obs.timer_add(check_Server, 10000)
         
         obs.timer_remove(ping_Server)
-        # Time is in ms.
+        # # # Time is in ms.
         obs.timer_add(ping_Server, (Server.closeIfNoPingInXSeconds-1)*1000)
 
-        obs.obs_frontend_remove_event_callback(shutdownServer)
-        obs.obs_frontend_add_event_callback(shutdownServer)
+        obs.obs_frontend_remove_event_callback(frontend_event)
+        obs.obs_frontend_add_event_callback(frontend_event)
 
     except Exception as e: 
         print("Exception from script_update: %s" % (e))
 
-def shutdownServer(data):
-    print("Shutdown")
-    #print("Data: %s" % (data))
+def frontend_event(data):
+    global scene_item
+    global source_name
+
+    print("Shutdown - Data: %s" % (data))
     if data == 17:
         Server.run = False
         Server.forceCloseServerSocket()
+        Source.processingAnimation = False
+        obs.timer_remove(adjustCameraTick)
         obs.timer_remove(ping_Server)
         obs.timer_remove(check_Server)
-        obs.timer_remove(adjustCameraTick)
-        obs.timer_remove(DelayedTimerAddition)
 
         main_thread = threading.current_thread()
         for t in threading.enumerate():
@@ -850,8 +869,12 @@ def shutdownServer(data):
             t.join()
         print("Finished joining thread.")
         Server.thread = None
-
-def DelayedTimerAddition():
-    obs.timer_remove(adjustCameraTick)
-    obs.timer_add(adjustCameraTick, UpdateRateMs)
-    obs.timer_remove(DelayedTimerAddition)
+        obs.obs_sceneitem_release(scene_item)
+        scene_item = None
+    elif data == 8:
+        if scene_item is not None:
+            #print("Before scene item release on shutdown data = 8")
+            #obs.obs_sceneitem_release(scene_item)
+            #scene_item = None
+            #print("After scene item release on shutdown data = 8")
+            scene_item = findSceneItem(source_name)
